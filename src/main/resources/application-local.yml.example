@@ -1,0 +1,20 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/${DB_NAME:user_management_db}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  
+  jpa:
+    show-sql: true
+
+keycloak:
+  url: ${KEYCLOAK_URL:http://localhost:8090}
+  realm: ${KEYCLOAK_REALM:visionboard-backend}
+  admin:
+    client-id: ${KEYCLOAK_CLIENT_ID:backend-client}
+    client-secret: ${KEYCLOAK_CLIENT_SECRET}
+
+logging:
+  level:
+    root: INFO
+    com.visionboard: DEBUG

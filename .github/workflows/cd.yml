@@ -1,0 +1,223 @@
+name: CD Pipeline
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+        
+    - name: Update kube config
+      run: aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
+      
+    - name: Deploy to staging
+      run: |
+        # Update image tag in Kubernetes manifests
+        IMAGE_TAG=${GITHUB_SHA:0:7}
+        sed -i "s|visionboard/user-management-service:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:main-${GITHUB_SHA}-$(date +%s)|g" k8s/deployment.yml
+        
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/ -n visionboard-staging
+        
+        # Wait for rollout to complete
+        kubectl rollout status deployment/user-management-service -n visionboard-staging --timeout=300s
+        
+    - name: Run smoke tests
+      run: |
+        # Wait for service to be ready
+        sleep 30
+        
+        # Get service endpoint
+        SERVICE_URL=$(kubectl get service user-management-service -n visionboard-staging -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+        
+        # Run smoke tests
+        curl -f http://${SERVICE_URL}:8081/actuator/health || exit 1
+        echo "Staging deployment successful!"
+        
+    - name: Notify deployment status
+      uses: 8398a7/action-slack@v3
+      if: always()
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production
+    needs: deploy-staging
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+        
+    - name: Update kube config
+      run: aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
+      
+    - name: Deploy to production
+      run: |
+        # Get the tag version
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+        else
+          VERSION="main-${GITHUB_SHA}-$(date +%s)"
+        fi
+        
+        # Update image tag in Kubernetes manifests
+        sed -i "s|visionboard/user-management-service:latest|${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${VERSION}|g" k8s/deployment.yml
+        
+        # Apply Kubernetes manifests
+        kubectl apply -f k8s/ -n visionboard-production
+        
+        # Wait for rollout to complete
+        kubectl rollout status deployment/user-management-service -n visionboard-production --timeout=600s
+        
+    - name: Run production health checks
+      run: |
+        # Wait for service to be ready
+        sleep 60
+        
+        # Get service endpoint
+        SERVICE_URL=$(kubectl get service user-management-service -n visionboard-production -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+        
+        # Run comprehensive health checks
+        curl -f http://${SERVICE_URL}:8081/actuator/health || exit 1
+        curl -f http://${SERVICE_URL}:8081/actuator/health/readiness || exit 1
+        curl -f http://${SERVICE_URL}:8081/actuator/health/liveness || exit 1
+        
+        echo "Production deployment successful!"
+        
+    - name: Create GitHub release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          target/*.jar
+        body: |
+          ## Changes in this Release
+          
+          - User Management Service ${{ github.ref_name }}
+          - Docker image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          
+          ## Deployment
+          
+          Successfully deployed to production at $(date)
+        draft: false
+        prerelease: false
+        
+    - name: Notify production deployment
+      uses: 8398a7/action-slack@v3
+      if: always()
+      with:
+        status: ${{ job.status }}
+        channel: '#production'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+        custom_payload: |
+          {
+            username: 'GitHub Actions',
+            icon_emoji: ':rocket:',
+            attachments: [{
+              color: '${{ job.status }}' === 'success' ? 'good' : 'danger',
+              text: `Production deployment of User Management Service ${{ github.ref_name }} ${{ job.status }}!`
+            }]
+          }
+
+  rollback:
+    name: Rollback Deployment
+    runs-on: ubuntu-latest
+    environment: production
+    if: failure() && needs.deploy-production.result == 'failure'
+    needs: deploy-production
+    
+    steps:
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: 'v1.28.0'
+        
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+        
+    - name: Update kube config
+      run: aws eks update-kubeconfig --name ${{ secrets.EKS_CLUSTER_NAME }}
+      
+    - name: Rollback deployment
+      run: |
+        # Rollback to previous revision
+        kubectl rollout undo deployment/user-management-service -n visionboard-production
+        
+        # Wait for rollback to complete
+        kubectl rollout status deployment/user-management-service -n visionboard-production --timeout=300s
+        
+        echo "Rollback completed!"
+        
+    - name: Notify rollback
+      uses: 8398a7/action-slack@v3
+      with:
+        status: 'warning'
+        channel: '#production'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        custom_payload: |
+          {
+            username: 'GitHub Actions',
+            icon_emoji: ':warning:',
+            attachments: [{
+              color: 'warning',
+              text: 'Production deployment failed and was rolled back automatically!'
+            }]
+          }

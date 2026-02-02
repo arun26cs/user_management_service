@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-management-config
+  namespace: visionboard
+  labels:
+    app: user-management-service
+data:
+  # Database Configuration
+  db.host: "postgres-service"
+  db.port: "5432"
+  db.name: "user_management_db"
+  
+  # Keycloak Configuration
+  keycloak.url: "http://keycloak-service:8080"
+  keycloak.realm: "visionboard"
+  keycloak.clientId: "visionboard-backend"
+  
+  # Application Configuration
+  logging.level.root: "INFO"
+  logging.level.com.visionboard: "DEBUG"
+  
+  # Server Configuration
+  server.port: "8081"
+  
+  # Management Configuration
+  management.endpoints.web.exposure.include: "health,info,metrics"
+  management.endpoint.health.show-details: "when-authorized"

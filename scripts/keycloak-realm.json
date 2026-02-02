@@ -1,0 +1,169 @@
+{
+  "id": "visionboard-backend",
+  "realm": "visionboard-backend",
+  "displayName": "Vision Board Backend",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": true,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "maxFailureWaitSeconds": 900,
+  "minimumQuickLoginWaitSeconds": 60,
+  "waitIncrementSeconds": 60,
+  "quickLoginCheckMilliSeconds": 1000,
+  "maxDeltaTimeSeconds": 43200,
+  "failureFactor": 30,
+  "defaultSignatureAlgorithm": "RS256",
+  "accessTokenLifespan": 900,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "accessCodeLifespan": 60,
+  "accessCodeLifespanUserAction": 300,
+  "accessCodeLifespanLogin": 1800,
+  "clients": [
+    {
+      "id": "visionboard-web",
+      "clientId": "visionboard-web",
+      "name": "Vision Board Web Client",
+      "description": "Public client for frontend applications",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "https://visionboard.com/*",
+        "https://www.visionboard.com/*"
+      ],
+      "webOrigins": [
+        "http://localhost:3000",
+        "https://visionboard.com",
+        "https://www.visionboard.com"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3000/*##https://visionboard.com/*##https://www.visionboard.com/*"
+      }
+    },
+    {
+      "id": "backend-client",
+      "clientId": "backend-client",
+      "name": "Vision Board Backend Service",
+      "description": "Confidential client for backend services",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "uQmBRCf1VXJDDBhsFReHKy0mpZCG9NKM",
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "attributes": {
+        "access.token.lifespan": "900",
+        "client.secret.creation.time": "1640995200"
+      }
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "id": "user",
+        "name": "user",
+        "description": "Standard user role",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "visionboard"
+      },
+      {
+        "id": "premium_user",
+        "name": "premium_user",
+        "description": "Premium user with additional features",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "visionboard"
+      },
+      {
+        "id": "admin",
+        "name": "admin",
+        "description": "Administrator role",
+        "composite": false,
+        "clientRole": false,
+        "containerId": "visionboard"
+      }
+    ]
+  },
+  "defaultRoles": ["user"],
+  "defaultGroups": [],
+  "attributes": {
+    "frontendUrl": "http://localhost:8090",
+    "userManagedAccessAllowed": false
+  },
+  "userFederationProviders": [],
+  "userFederationMappers": [],
+  "identityProviders": [],
+  "identityProviderMappers": [],
+  "protocolMappers": [
+    {
+      "id": "username-mapper",
+      "name": "username",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-property-mapper",
+      "consentRequired": false,
+      "config": {
+        "userinfo.token.claim": "true",
+        "user.attribute": "username",
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "claim.name": "preferred_username",
+        "jsonType.label": "String"
+      }
+    },
+    {
+      "id": "email-mapper",
+      "name": "email",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-property-mapper",
+      "consentRequired": false,
+      "config": {
+        "userinfo.token.claim": "true",
+        "user.attribute": "email",
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "claim.name": "email",
+        "jsonType.label": "String"
+      }
+    },
+    {
+      "id": "realm-roles-mapper",
+      "name": "realm roles",
+      "protocol": "openid-connect",
+      "protocolMapper": "oidc-usermodel-realm-role-mapper",
+      "consentRequired": false,
+      "config": {
+        "userinfo.token.claim": "true",
+        "id.token.claim": "true",
+        "access.token.claim": "true",
+        "claim.name": "realm_access.roles",
+        "jsonType.label": "String",
+        "multivalued": "true"
+      }
+    }
+  ],
+  "browserSecurityHeaders": {
+    "contentSecurityPolicyReportOnly": "",
+    "xContentTypeOptions": "nosniff",
+    "xRobotsTag": "none",
+    "xFrameOptions": "SAMEORIGIN",
+    "contentSecurityPolicy": "frame-src 'self'; frame-ancestors 'self'; object-src 'none';",
+    "xXSSProtection": "1; mode=block",
+    "strictTransportSecurity": "max-age=31536000; includeSubDomains"
+  }
+}
