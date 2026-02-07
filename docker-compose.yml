@@ -1,6 +1,20 @@
 version: '3.8'
 
 services:
+  # flyway-migration service
+  flyway-migration:
+    image: flyway/flyway:10.8.1
+    container_name: user-management-flyway
+    command: -url=jdbc:postgresql://postgres:5432/${DB_NAME} -user=${DB_USER} -password=${DB_PASSWORD} -connectRetries=60 migrate
+    volumes:
+      - ./src/main/resources/db/migration:/flyway/sql
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - user-management-network
+    restart: "no"
+
   # User Management Service
   user-management-service:
     build: .
@@ -15,6 +29,7 @@ services:
       
       # Keycloak Configuration
       KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_EXTERNAL_URL: http://localhost:8090
       KEYCLOAK_REALM: ${KEYCLOAK_REALM}
       KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID}
       KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_CLIENT_SECRET}
@@ -30,6 +45,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      flyway-migration:
+        condition: service_completed_successfully  # flyway-migration success
       keycloak:
         condition: service_healthy
     healthcheck:
@@ -81,7 +98,8 @@ services:
       KC_DB_PASSWORD: ${DB_PASSWORD}
       
       # Server Configuration
-      KC_HOSTNAME: localhost
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
       KC_METRICS_ENABLED: "true"

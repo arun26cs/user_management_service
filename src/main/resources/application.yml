@@ -30,7 +30,7 @@ spring:
           time_zone: UTC
   
   flyway:
-    enabled: true
+    enabled: false #since we are running the migration in a separate container
     locations: classpath:db/migration
     baseline-on-migrate: false
     clean-on-validation-error: true
@@ -39,12 +39,15 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${KEYCLOAK_URL:http://localhost:8080}/realms/${KEYCLOAK_REALM:visionboard-backend}
-          jwk-set-uri: ${KEYCLOAK_URL:http://localhost:8080}/realms/${KEYCLOAK_REALM:visionboard-backend}/protocol/openid-connect/certs
+          # IMPORTANT: jwk-set-uri uses INTERNAL URL (container network) to fetch keys
+          # But we need custom issuer validation for EXTERNAL URL (what tokens contain)
+          jwk-set-uri: ${KEYCLOAK_URL:http://keycloak:8080}/realms/${KEYCLOAK_REALM:visionboard-backend}/protocol/openid-connect/certs
 
 keycloak:
-  url: ${KEYCLOAK_URL:http://localhost:8080}
+  url: ${KEYCLOAK_URL:http://keycloak:8080}
   realm: ${KEYCLOAK_REALM:visionboard-backend}
+  # External issuer URL (what tokens contain as "iss" claim)
+  external-issuer: ${KEYCLOAK_EXTERNAL_URL:http://localhost:8090}/realms/${KEYCLOAK_REALM:visionboard-backend}
   admin:
     client-id: ${KEYCLOAK_CLIENT_ID:backend-client}
     client-secret: ${KEYCLOAK_CLIENT_SECRET:uQmBRCf1VXJDDBhsFReHKy0mpZCG9NKM}

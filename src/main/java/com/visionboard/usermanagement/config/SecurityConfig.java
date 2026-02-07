@@ -1,6 +1,7 @@
 package com.visionboard.usermanagement.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -8,6 +9,14 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimNames;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
@@ -16,7 +25,6 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
-import java.util.List;
 
 /**
  * Spring Security configuration for OAuth2 Resource Server.
@@ -26,6 +34,14 @@ import java.util.List;
 @EnableWebSecurity
 @RequiredArgsConstructor
 public class SecurityConfig {
+
+    // Internal URL to fetch JWKS (container network)
+    @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}")
+    private String jwkSetUri;
+
+    // External URL that tokens contain as issuer
+    @Value("${keycloak.external-issuer:http://localhost:8090/realms/visionboard-backend}")
+    private String externalIssuer;
 
     /**
      * Configure security filter chain.
@@ -109,5 +125,31 @@ public class SecurityConfig {
         jwtAuthenticationConverter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
 
         return jwtAuthenticationConverter;
+    }
+
+    /**
+     * Custom JWT Decoder that:
+     * 1. Fetches JWKS from internal Keycloak URL (container network)
+     * 2. Validates issuer against external URL (what tokens actually contain)
+     */
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        // Build decoder using internal JWKS URL
+        NimbusJwtDecoder jwtDecoder = NimbusJwtDecoder.withJwkSetUri(jwkSetUri).build();
+
+        // Create custom issuer validator for external URL
+        OAuth2TokenValidator<Jwt> issuerValidator = new JwtClaimValidator<String>(
+                JwtClaimNames.ISS,
+                issuer -> issuer != null && issuer.equals(externalIssuer)
+        );
+
+        // Combine with timestamp validator
+        OAuth2TokenValidator<Jwt> validators = new DelegatingOAuth2TokenValidator<>(
+                new JwtTimestampValidator(),
+                issuerValidator
+        );
+
+        jwtDecoder.setJwtValidator(validators);
+        return jwtDecoder;
     }
 }
