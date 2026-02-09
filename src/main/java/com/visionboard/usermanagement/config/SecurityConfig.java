@@ -91,7 +91,8 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(Arrays.asList(
                 "https://visionboard.com",
                 "https://www.visionboard.com",
-                "http://localhost:3000" // Development
+                "http://localhost:3000", // Development
+                "http://localhost:5173"  // Vite dev server
         ));
 
         // Allowed methods
